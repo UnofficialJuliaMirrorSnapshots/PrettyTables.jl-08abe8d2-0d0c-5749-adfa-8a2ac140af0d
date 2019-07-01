@@ -126,8 +126,8 @@ omitted, then it defaults to `stdout`.
 * `filters_row`: Filters for the rows (see the section `Filters`).
 * `filters_col`: Filters for the columns (see the section `Filters`).
 * `formatter`: See the section `Formatter`.
-* `highlighters`: A tuple with a list of highlighters (see the section
-                  `Highlighters`).
+* `highlighters`: An instance of `Highlighter` or a tuple with a list of
+                  highlighters (see the section `Highlighters`).
 * `hlines`: A vector of `Int` indicating row numbers in which an additional
             horizontal line should be drawn after the row. Notice that numbers
             lower than 1 and equal or higher than the number of rows will be
@@ -137,6 +137,9 @@ omitted, then it defaults to `stdout`.
 * `noheader`: If `true`, then the header will not be printed. Notice that all
               keywords and parameters related to the header and sub-headers will
               be ignored. (**Default** = `false`)
+* `nosubheader`: If `true`, then the sub-header will not be printed, *i.e.* the
+                 header will contain only one line. Notice that this option has
+                 no effect if `noheader = true`. (**Default** = `false`)
 * `same_column_size`: If `true`, then all the columns will have the same size.
                       (**Default** = `false`)
 * `screen_size`: A tuple of two integers that defines the screen size (num. of
@@ -263,6 +266,9 @@ Notice that if multiple highlighters are valid for the element `(i,j)`, then the
 applied style will be equal to the first match considering the order in the
 Tuple `highlighters`.
 
+If only a single highlighter is wanted, then it can be passed directly to the
+keyword `highlighter` without being inside a `Tuple`.
+
 """
 pretty_table(data::AbstractVecOrMat{T1}, header::AbstractVecOrMat{T2},
              tf::PrettyTableFormat = unicode; kwargs...) where {T1,T2} =
@@ -354,13 +360,15 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
                        filters_row::Union{Nothing,Tuple} = nothing,
                        filters_col::Union{Nothing,Tuple} = nothing,
                        formatter::Dict = Dict(),
-                       highlighters::Tuple = (),
+                       highlighters::Union{Highlighter,Tuple} = (),
                        hlines::AbstractVector{Int} = Int[],
                        linebreaks::Bool = false,
                        noheader::Bool = false,
+                       nosubheader::Bool = false,
                        same_column_size::Bool = false,
                        screen_size::Union{Nothing,Tuple{Int,Int}} = nothing,
-                       show_row_number::Bool = false)
+                       show_row_number::Bool = false,
+                       sortkeys::Bool = false)
 
     # Let's create a `IOBuffer` to write everything and then transfer to `io`.
     io_has_color = get(io, :color, false)
@@ -413,7 +421,7 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
     # dimension, because the header can be a vector or a matrix. It also depends
     # on the dimension of the `data`. If `data` is a vector, then `header` must
     # be a vector, in which the first elements if the header and the others are
-    # subheaders.
+    # sub-headers.
 
     header_size     = size(header)
     header_num_dims = length(header_size)
@@ -436,8 +444,18 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
     !noheader && num_cols != header_num_cols &&
     error("The header length must be equal to the number of columns.")
 
-    # Transform some keywords that are single elements to vectors.
+    # Additional processing necessary if the user wants to print the header.
     if !noheader
+        # If the user do not want to print the sub-header but wants to print the
+        # header, then just force the number of rows in header to be 1.
+        if nosubheader
+            # Now, `header` will be a view of the first line of the matrix that
+            # has the header.
+            header = @view header[1:header_num_rows:end]
+            header_num_rows = 1
+        end
+
+        # Transform some keywords that are single elements to vectors.
         if typeof(header_crayon) == Crayon
             header_crayon = [header_crayon for i = 1:num_cols]
         else
@@ -458,6 +476,9 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
     else
         length(alignment) != num_cols && error("The length of `alignment` must be the same as the number of rows.")
     end
+
+    # Make sure that `highlighters` is always a tuple.
+    !(highlighters isa Tuple) && (highlighters = (highlighters,))
 
     # If the user wants to filter the data, then check which columns and rows
     # must be printed. Notice that if a data is filtered, then it means that it
@@ -701,8 +722,8 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
                     data_ij_str = " " * @_str_aligned("", alignment[jc], cols_width[j]) * " "
                 end
 
-                # If we have highlighters defined, then we need to verify if this
-                # data should be highlight.
+                # If we have highlighters defined, then we need to verify if
+                # this data should be highlight.
                 printed = false
                 crayon  = text_crayon
 
