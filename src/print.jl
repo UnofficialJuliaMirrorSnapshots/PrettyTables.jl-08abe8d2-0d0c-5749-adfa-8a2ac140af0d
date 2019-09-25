@@ -35,41 +35,6 @@ respect to the point in which the table is printed.
 end
 
 ################################################################################
-#                                    Macros
-################################################################################
-
-"""
-    macro _str_aligned(data, alignment, field_size)
-
-This macro returns a string of `data` with alignment `alignment` in a field with
-size `field_size`. `alignment` can be `:l` or `:L` for left alignment, `:c` or
-`:C` for center alignment, or `:r` or `:R` for right alignment. It defaults to
-`:r` if `alignment` is any other symbol.
-
-"""
-macro _str_aligned(data, alignment, field_size)
-    quote
-        ldata = $(esc(data))
-        la = $(esc(alignment))
-        lfs = $(esc(field_size))
-        ds  = length(ldata)
-        Δ = lfs - ds
-
-        Δ < 0 && error("The field size must be bigger than the data size.")
-
-        if la == :l || la == :L
-            ldata * " "^Δ
-        elseif la == :c || la == :C
-            left  = div(Δ,2)
-            right = Δ-left
-            " "^left * ldata * " "^right
-        else
-            " "^Δ * ldata
-        end
-    end
-end
-
-################################################################################
 #                               Public Functions
 ################################################################################
 
@@ -118,6 +83,10 @@ omitted, then it defaults to `stdout`.
                           numbers.
 * `text_crayon`: Crayon to print default text.
 * `alignment`: Select the alignment of the columns (see the section `Alignment`).
+* `cell_alignment`: A dictionary of type `(i,j) => a` that overrides that
+                    alignment of the cell `(i,j)` to `a` regardless of the
+                    columns alignment selected. `a` must be a symbol like
+                    specified in the section `Alignment`.
 * `crop`: Select the printing behavior when the data is bigger than the
           available screen size (see `screen_size`). It can be `:both` to crop
           on vertical and horizontal direction, `:horizontal` to crop only on
@@ -132,6 +101,12 @@ omitted, then it defaults to `stdout`.
             horizontal line should be drawn after the row. Notice that numbers
             lower than 1 and equal or higher than the number of rows will be
             neglected.
+* `hlines_format`: A tuple of 4 characters specifying the format of the
+                   horizontal lines. The characters must be the left
+                   intersection, the middle intersection, the right
+                   intersection, and the row. If it is `nothing`, then it will
+                   use the same format specified in `tf`.
+                   (**Default** = `nothing`)
 * `linebreaks`: If `true`, then `\\n` will break the line inside the cells.
                 (**Default** = `false`)
 * `noheader`: If `true`, then the header will not be printed. Notice that all
@@ -356,12 +331,14 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
                        rownum_header_crayon::Crayon = Crayon(bold = true),
                        text_crayon::Crayon = Crayon(),
                        alignment::Union{Symbol,Vector{Symbol}} = :r,
+                       cell_alignment::Dict{Tuple{Int,Int},Symbol} = Dict{Tuple{Int,Int},Symbol}(),
                        crop::Symbol = :both,
                        filters_row::Union{Nothing,Tuple} = nothing,
                        filters_col::Union{Nothing,Tuple} = nothing,
                        formatter::Dict = Dict(),
                        highlighters::Union{Highlighter,Tuple} = (),
                        hlines::AbstractVector{Int} = Int[],
+                       hlines_format::Union{Nothing,NTuple{4,Char}} = nothing,
                        linebreaks::Bool = false,
                        noheader::Bool = false,
                        nosubheader::Bool = false,
@@ -631,6 +608,12 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
     # larger.
     same_column_size && (cols_width = [maximum(cols_width) for i = 1:num_printed_cols])
 
+    # Create the format of the horizontal lines.
+    if hlines_format == nothing
+        hlines_format = (tf.left_intersection, tf.middle_intersection,
+                         tf.right_intersection, tf.row)
+    end
+
     # Top table line
     # ==========================================================================
 
@@ -652,7 +635,7 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
             if show_row_number
                 # The text "Row" must appear only on the first line.
                 if i == 1
-                    header_row_i_str = " " * @_str_aligned("Row", :r, row_number_width) * " "
+                    header_row_i_str = " " * _str_aligned("Row", :r, row_number_width) * " "
                     _p!(screen, buf, rownum_header_crayon, header_row_i_str)
                 else
                     _p!(screen, buf, rownum_header_crayon, " "^(row_number_width+2))
@@ -665,7 +648,7 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
                 # Index of the j-th printed column in `data`.
                 jc = id_cols[j]
 
-                header_i_str = " " * @_str_aligned(header_str[i,j], alignment[jc], cols_width[j]) * " "
+                header_i_str = " " * _str_aligned(header_str[i,j], alignment[jc], cols_width[j]) * " "
 
                 # Check if we are printing the header or the sub-headers and select
                 # the styling accordingly.
@@ -687,10 +670,12 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
         # Bottom header line
         #-----------------------------------------------------------------------
 
-        _draw_line!(screen, buf, tf.left_intersection, tf.middle_intersection,
-                    tf.right_intersection, tf.row, border_crayon,
-                    num_printed_cols, cols_width, show_row_number,
-                    row_number_width)
+        tf.header_line && _draw_line!(screen, buf, tf.left_intersection,
+                                      tf.middle_intersection,
+                                      tf.right_intersection, tf.row,
+                                      border_crayon, num_printed_cols,
+                                      cols_width, show_row_number,
+                                      row_number_width)
     end
 
     # Data
@@ -704,9 +689,9 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
 
             if show_row_number
                 if l == 1
-                    row_number_i_str = " " * @_str_aligned(string(ir), :r, row_number_width) * " "
+                    row_number_i_str = " " * _str_aligned(string(ir), :r, row_number_width) * " "
                 else
-                    row_number_i_str = " " * @_str_aligned("", :r, row_number_width) * " "
+                    row_number_i_str = " " * _str_aligned("", :r, row_number_width) * " "
                 end
 
                 _p!(screen, buf, text_crayon,   row_number_i_str)
@@ -716,10 +701,17 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
             for j = 1:num_printed_cols
                 jc = id_cols[j]
 
-                if length(data_str[i,j]) >= l
-                    data_ij_str = " " * @_str_aligned(data_str[i,j][l], alignment[jc], cols_width[j]) * " "
+                # Check the alignment of this cell.
+                if haskey(cell_alignment, (i,j))
+                    alignment_ij = cell_alignment[(i,j)]
                 else
-                    data_ij_str = " " * @_str_aligned("", alignment[jc], cols_width[j]) * " "
+                    alignment_ij = alignment[jc]
+                end
+
+                if length(data_str[i,j]) >= l
+                    data_ij_str = " " * _str_aligned(data_str[i,j][l], alignment_ij, cols_width[j]) * " "
+                else
+                    data_ij_str = " " * _str_aligned("", alignment_ij, cols_width[j]) * " "
                 end
 
                 # If we have highlighters defined, then we need to verify if
@@ -751,8 +743,7 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
 
         # Check if we must draw a horizontal line here.
         i != num_rows && i in hlines &&
-        _draw_line!(screen, buf, tf.left_intersection, tf.middle_intersection,
-                    tf.right_intersection, tf.row, border_crayon,
+        _draw_line!(screen, buf, hlines_format..., border_crayon,
                     num_printed_cols, cols_width, show_row_number,
                     row_number_width)
 
@@ -784,6 +775,36 @@ function _pretty_table(io, data, header, tf::PrettyTableFormat = unicode;
 end
 
 ################################################################################
+#                             Auxiliary functions
+################################################################################
+
+"""
+    function _str_aligned(data::AbstractString, alignment::Symbol, field_size::Integer)
+
+This function returns the string `data` with alignment `alignment` in a field
+with size `field_size`. `alignment` can be `:l` or `:L` for left alignment, `:c`
+or `:C` for center alignment, or `:r` or `:R` for right alignment. It defaults
+to `:r` if `alignment` is any other symbol.
+
+"""
+function _str_aligned(data::AbstractString, alignment::Symbol,
+                      field_size::Integer)
+
+    Δ  = field_size - length(data)
+    Δ < 0 && error("The field size must be bigger than the data size.")
+
+    if alignment == :l || alignment == :L
+        return data * " "^Δ
+    elseif alignment == :c || alignment == :C
+        left  = div(Δ,2)
+        right = Δ-left
+        return " "^left * data * " "^right
+    else
+        return " "^Δ * data
+    end
+end
+
+################################################################################
 #                              Printing Functions
 ################################################################################
 
@@ -801,13 +822,13 @@ function _draw_continuation_row(screen, io, tf, text_crayon, border_crayon,
     _p!(screen, io, border_crayon, tf.column)
 
     if show_row_number
-        row_number_i_str = @_str_aligned("⋮", :c, row_number_width + 2)
+        row_number_i_str = _str_aligned("⋮", :c, row_number_width + 2)
         _p!(screen, io, text_crayon,   row_number_i_str)
         _p!(screen, io, border_crayon, tf.column)
     end
 
     @inbounds for j = 1:num_printed_cols
-        data_ij_str = @_str_aligned("⋮", :c, cols_width[j] + 2)
+        data_ij_str = _str_aligned("⋮", :c, cols_width[j] + 2)
         _p!(screen, io, text_crayon, data_ij_str)
 
         flp = j == num_printed_cols

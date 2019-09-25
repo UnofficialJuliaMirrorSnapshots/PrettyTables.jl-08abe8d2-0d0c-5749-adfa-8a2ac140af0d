@@ -83,8 +83,35 @@ end
 │ 6      │   true │  6.0   │      6 │
 └────────┴────────┴────────┴────────┘
 """
-    result = sprint((io, data)->pretty_table(io, data; 
+    result = sprint((io, data)->pretty_table(io, data;
                                              alignment = [:l,:r,:c,:r]),
+                    data)
+    @test result == expected
+
+    # Cell override
+    # ==========================================================================
+
+    expected = """
+┌────────┬────────┬────────┬────────┐
+│ Col. 1 │ Col. 2 │ Col. 3 │ Col. 4 │
+├────────┼────────┼────────┼────────┤
+│ 1      │  false │  1.0   │ 1      │
+│ 2      │   true │  2.0   │      2 │
+│      3 │ false  │  3.0   │   3    │
+│ 4      │   true │  4.0   │   4    │
+│ 5      │  false │  5.0   │      5 │
+│ 6      │   true │  6.0   │ 6      │
+└────────┴────────┴────────┴────────┘
+"""
+    result = sprint((io, data)->pretty_table(io, data;
+                                             alignment = [:l,:r,:c,:r],
+                                             cell_alignment =
+                                                Dict( (3,1) => :r,
+                                                      (3,2) => :l,
+                                                      (1,4) => :l,
+                                                      (3,4) => :c,
+                                                      (4,4) => :c,
+                                                      (6,4) => :l )),
                     data)
     @test result == expected
 end
@@ -106,7 +133,7 @@ end
     result = sprint((io,data)->pretty_table(io, data;
                                             filters_row = ( (data,i) -> i%2 == 0,),
                                             filters_col = ( (data,i) -> i%2 == 1,),
-                                            formatter = ft_printf("%.3",[3]),
+                                            formatter = ft_printf("%.3",3),
                                             show_row_number = true), data)
     @test result == expected
 
@@ -123,7 +150,7 @@ end
     result = sprint((io,data)->pretty_table(io, data;
                                             filters_row = ( (data,i) -> i%2 == 0,),
                                             filters_col = ( (data,i) -> i%2 == 1,),
-                                            formatter = ft_printf("%.3",[3]),
+                                            formatter = ft_printf("%.3",3),
                                             show_row_number = true,
                                             alignment = [:c,:l,:l,:c]), data)
     @test result == expected
@@ -311,6 +338,40 @@ end
 """
     result = sprint(pretty_table, data, unicode_rounded)
     @test result == expected
+
+    # Custom formats
+    # ==========================================================================
+
+    expected = """
+│ Col. 1 │ Col. 2 │ Col. 3 │ Col. 4 │
+├────────┼────────┼────────┼────────┤
+│      1 │  false │    1.0 │      1 │
+│      2 │   true │    2.0 │      2 │
+│      3 │  false │    3.0 │      3 │
+│      4 │   true │    4.0 │      4 │
+│      5 │  false │    5.0 │      5 │
+│      6 │   true │    6.0 │      6 │
+"""
+
+    tf = PrettyTableFormat(unicode, top_line = false, bottom_line = false)
+    result = sprint(pretty_table, data, tf)
+    @test result == expected
+
+    expected = """
+┌────────┬────────┬────────┬────────┐
+│ Col. 1 │ Col. 2 │ Col. 3 │ Col. 4 │
+│      1 │  false │    1.0 │      1 │
+│      2 │   true │    2.0 │      2 │
+│      3 │  false │    3.0 │      3 │
+│      4 │   true │    4.0 │      4 │
+│      5 │  false │    5.0 │      5 │
+│      6 │   true │    6.0 │      6 │
+└────────┴────────┴────────┴────────┘
+"""
+
+    tf = PrettyTableFormat(unicode, header_line = false)
+    result = sprint(pretty_table, data, tf)
+    @test result == expected
 end
 
 # Pre-defined formatters
@@ -470,6 +531,26 @@ end
     result = sprint((io,data)->
                     pretty_table(io,data; hlines = findall(x->x == true, data[:,2])),
                     data)
+    @test result == expected
+
+    expected = """
+┌────────┬────────┬────────┬────────┐
+│ Col. 1 │ Col. 2 │ Col. 3 │ Col. 4 │
+├────────┼────────┼────────┼────────┤
+│      1 │  false │    1.0 │      1 │
+│      2 │   true │    2.0 │      2 │
+├........+........+........+........┤
+│      3 │  false │    3.0 │      3 │
+│      4 │   true │    4.0 │      4 │
+├........+........+........+........┤
+│      5 │  false │    5.0 │      5 │
+│      6 │   true │    6.0 │      6 │
+└────────┴────────┴────────┴────────┘
+"""
+    result = sprint((io,data)->
+                    pretty_table(io,data;
+                                 hlines = findall(x->x == true, data[:,2]),
+                                 hlines_format = ('├','+','┤','.')), data)
     @test result == expected
 end
 
@@ -1025,4 +1106,33 @@ end
     result = sprint(pretty_table, df)
 
     @test result == expected
+end
+
+# Issue #19
+# ==============================================================================
+
+@testset "Issue #19 - ft_printf with cells that are not numbers" begin
+    matrix = [1 1; 2 2; 3 3; "teste" "teste"; 4 4; 5 5; true true; :s :s]
+
+    expected = """
+┌────────────┬────────┐
+│     Col. 1 │ Col. 2 │
+├────────────┼────────┤
+│       1.00 │      1 │
+│       2.00 │      2 │
+│       3.00 │      3 │
+│      teste │  teste │
+│       4.00 │      4 │
+│       5.00 │      5 │
+│       1.00 │   true │
+│          s │      s │
+└────────────┴────────┘
+"""
+
+    result = sprint((io,data)->pretty_table(io, matrix;
+                                            formatter = ft_printf("%10.2f",[1])),
+                    data)
+
+    @test result == expected
+
 end

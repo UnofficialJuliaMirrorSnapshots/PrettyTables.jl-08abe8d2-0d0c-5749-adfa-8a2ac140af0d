@@ -134,6 +134,10 @@ In all cases, the following keywords are available:
 * `text_crayon`: Crayon to print default text.
 * `alignment`: Select the alignment of the columns (see the section
                [Alignment](@ref)).
+* `cell_alignment`: A dictionary of type `(i,j) => a` that overrides that
+                    alignment of the cell `(i,j)` to `a` regardless of the
+                    columns alignment selected. `a` must be a symbol like
+                    specified in the section [Alignment](@ref).
 * `crop`: Select the printing behavior when the data is bigger than the
           available screen size (see `screen_size`). It can be `:both` to crop
           on vertical and horizontal direction, `:horizontal` to crop only on
@@ -148,6 +152,12 @@ In all cases, the following keywords are available:
             horizontal line should be drawn after the row. Notice that numbers
             lower than 1 and equal or higher than the number of rows will be
             neglected.
+* `hlines_format`: A tuple of 4 characters specifying the format of the
+                   horizontal lines. The characters must be the left
+                   intersection, the middle intersection, the right
+                   intersection, and the row. If it is `nothing`, then it will
+                   use the same format specified in `tf`.
+                   (**Default** = `nothing`)
 * `linebreaks`: If `true`, then `\n` will break the line inside the cells.
                 (**Default** = `false`)
 * `noheader`: If `true`, then the header will not be printed. Notice that all
