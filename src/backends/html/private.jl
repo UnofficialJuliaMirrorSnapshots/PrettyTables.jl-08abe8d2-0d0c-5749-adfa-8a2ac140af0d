@@ -10,24 +10,36 @@ const _html_alignment = Dict(:l => "left",
                              :c => "center",
                              :r => "right")
 
-function _styled_html(tag::String, text::String, style::Dict{String,String} = Dict{String,String}())
+function _styled_html(tag::String, text::String,
+                      style::Dict{String,String} = Dict{String,String}();
+                      class = "")
+
+    str_class = isempty(class) ? "" : " class = " * class
+
     # If there is no keys in the style dictionary, just return the tag.
     if isempty(style)
-        return "<" * tag * ">" * text * "</" * tag * ">"
+        return "<" * tag * str_class * ">" * text * "</" * tag * ">"
     else
         # Create the sytle string.
         style_str = ""
 
-        for key in keys(style)
+        # We must sort the keys so that we can provide stable outputs.
+        v   = collect(values(style))
+        k   = collect(keys(style))
+        ind = sortperm(collect(keys(style)))
+        vk  = @view k[ind]
+        vv  = @view v[ind]
+
+        for i = 1:length(vk)
             # If the value is empty, then just continue.
-            value = style[key]
+            value = vv[i]
             isempty(value) && continue
 
-            style_str *= key * ": "
-            style_str *= style[key] * "; "
+            style_str *= vk[i] * ": "
+            style_str *= value * "; "
         end
 
-        return "<" * tag * " style = \"" * style_str * "\">" * text * "</" * tag * ">"
+        return "<" * tag * str_class * " style = \"" * style_str * "\">" * text * "</" * tag * ">"
     end
 end
 
